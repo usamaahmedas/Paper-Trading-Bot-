@@ -1,0 +1,32 @@
+# ALPHATRADE BOT DEPENDENCIES (Managed via package.json)
+# Note: For Node.js / TypeScript apps on Railway, dependencies are installed automatically 
+# from package.json via 'npm install'. This text file is for reference and checklist purposes.
+
+# CORE SYSTEM
+express==4.21.2
+vite==6.2.3
+typescript==5.8.2
+esbuild==0.25.0
+tsx==4.21.0
+
+# TRADING INTELLIGENCE & SENTIMENT
+@google/genai==1.52.0
+binance-api-node==0.13.9
+technicalindicators==3.1.0
+
+# UTILITIES & COMMUNICATION
+axios==1.16.1
+dotenv==17.2.3
+date-fns==4.1.0
+clsx==2.1.1
+tailwind-merge==3.6.0
+
+# INTERFACE & CHARTS
+react==19.0.1
+react-dom==19.0.1
+recharts==3.8.1
+lightweight-charts==5.2.0
+lucide-react==0.546.0
+motion==12.23.24
+@tailwindcss/vite==4.1.14
+tailwindcss==4.1.14
