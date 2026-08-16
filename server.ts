@@ -213,14 +213,14 @@ function parseEnvThreshold(envVal: string | undefined, defaultVal: number): numb
 
 // Config state
 let tradingConfig = {
-  stopLossPct: parseFloat(process.env.STOP_LOSS_PCT || '1.5'),
-  takeProfitPct: parseFloat(process.env.TAKE_PROFIT_PCT || '3.0'),
+  stopLossPct: parseFloat(process.env.STOP_LOSS_PCT || '2.0'),
+  takeProfitPct: parseFloat(process.env.TAKE_PROFIT_PCT || '4.0'),
   tradeSizePct: parseFloat(process.env.TRADE_SIZE_PCT || '2.0'),
   isAutoTradingEnabled: true,
   enableShorts: true,
-  buyThreshold: parseEnvThreshold(process.env.BUY_THRESHOLD, 55),
+  buyThreshold: parseEnvThreshold(process.env.BUY_THRESHOLD, 65),
   sellThreshold: 25, // For EXIT LONG
-  shortEntryThreshold: parseEnvThreshold(process.env.SHORT_ENTRY_THRESHOLD, 45),
+  shortEntryThreshold: parseEnvThreshold(process.env.SHORT_ENTRY_THRESHOLD, 65),
   shortExitThreshold: 75, // For EXIT SHORT
   cooldownMinutes: 15,
   trailingStopPct: 1.0,
