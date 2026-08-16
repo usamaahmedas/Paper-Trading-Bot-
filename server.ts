@@ -498,7 +498,7 @@ async function testTelegramConnection() {
   console.log('[Telegram Startup Test] Connecting to Telegram Bot API...');
   try {
     const config = getTradingConfig();
-    const rawText = `🚀 *AlphaTrade Bot is Online* ✅\n\n⚙️ *Score Threshold Synchronization*\n• LONG Entry Threshold: *+55* (Score >= ${config.buyThreshold})\n• SHORT Entry Threshold: *-55* (Score <= ${config.shortEntryThreshold})\n\nConfiguration is now symmetric and fully synchronized with the .env file!`;
+    const rawText = `🚀 *AlphaTrade Bot is Online* ✅\n\n⚙️ *Score Threshold Synchronization*\n• LONG Entry Threshold: *+65* (Score >= ${config.buyThreshold})\n• SHORT Entry Threshold: *-65* (Score <= ${config.shortEntryThreshold})\n\nConfiguration is now symmetric and fully synchronized with the .env file!`;
     const escapedText = escapeTelegramMarkdown(rawText);
     const response = await axios.post(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       chat_id: telegramChatId,
