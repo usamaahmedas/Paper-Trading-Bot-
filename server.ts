@@ -25,16 +25,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const distPath = path.resolve(__dirname, '../dist');
-app.use(express.static(distPath));
-
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(distPath, 'index.html'));
-  }
-});
-
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 let binanceClient: any = null;
 function getBinance() {
@@ -572,7 +563,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.join(process.cwd(), 'dist')));
-    app.get('*', (req, res) => res.sendFile(path.join(process.cwd(), 'dist/index.html')));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(process.cwd(), 'dist/index.html'));
+    });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
