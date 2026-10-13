@@ -34,7 +34,7 @@ app.get('*', (req, res) => {
   }
 });
 
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 let binanceClient: any = null;
 function getBinance() {
