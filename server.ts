@@ -412,6 +412,38 @@ function registerRoutes(app: express.Application) {
     res.json(trades);
   });
 
+  // The server has no price-alert store yet, so there is nothing to return.
+  // An empty array is the shape the dashboard expects (a list of alerts).
+  app.get('/api/trading/alerts', (req, res) => {
+    res.json([]);
+  });
+
+  // The server has no notification source yet; return an empty list.
+  app.get('/api/trading/notifications', (req, res) => {
+    res.json([]);
+  });
+
+  // Latest signal snapshot, derived from the most recent auto-engine log entry.
+  app.get('/api/trading/signals', (req, res) => {
+    const latest = debugLogs.length > 0 ? debugLogs[0] : null;
+    if (!latest) {
+      res.json({ reasons: [], aiAnalysis: '' });
+      return;
+    }
+    res.json({
+      price: latest.price,
+      rsi: latest.rsi,
+      ema200: latest.ema200,
+      score: latest.score,
+      trend: latest.trend,
+      h4Trend: latest.h4Trend,
+      triggered: latest.triggered,
+      timestamp: latest.timestamp,
+      reasons: [],
+      aiAnalysis: ''
+    });
+  });
+
   app.post('/api/trading/ledger/reset', (req, res) => {
     const password = req.body.password;
     if (password !== process.env.ADMIN_PASSWORD) {
