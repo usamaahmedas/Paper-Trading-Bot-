@@ -412,6 +412,28 @@ function registerRoutes(app: express.Application) {
     res.json(trades);
   });
 
+  // No alert or notification store exists yet; return empty lists so the dashboard can render.
+  app.get('/api/trading/alerts', (req, res) => {
+    res.json([]);
+  });
+
+  app.get('/api/trading/notifications', (req, res) => {
+    res.json([]);
+  });
+
+  // Latest signal snapshot from the auto-engine's in-memory debug log.
+  app.get('/api/trading/signals', (req, res) => {
+    const latest = debugLogs[0];
+    res.json({
+      price: latest?.price ?? 0,
+      rsi: latest?.rsi ?? 50,
+      ema200: latest?.ema200 ?? 0,
+      score: latest?.score ?? 50,
+      reasons: [],
+      aiAnalysis: ''
+    });
+  });
+
   app.post('/api/trading/ledger/reset', (req, res) => {
     const password = req.body.password;
     if (password !== process.env.ADMIN_PASSWORD) {

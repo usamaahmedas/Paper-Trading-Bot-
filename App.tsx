@@ -354,8 +354,13 @@ export default function App() {
   const fetchConfig = async () => {
     try {
       const res = await fetch(resolveUrl('/api/trading/config'));
+      if (!res.ok) throw new Error(`Config error: ${res.status}`);
       const data = await res.json();
-      setConfig(data);
+      // Server responds with { config }; merge over defaults so missing fields never crash render.
+      const incoming = data && typeof data === 'object' ? (data.config ?? data) : null;
+      if (incoming && typeof incoming === 'object') {
+        setConfig((prev: any) => ({ ...prev, ...incoming }));
+      }
     } catch (err) {
       console.error('Config error:', err);
     }
@@ -368,8 +373,12 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newConfig)
       });
+      if (!res.ok) throw new Error(`Update config error: ${res.status}`);
       const data = await res.json();
-      setConfig(data);
+      const incoming = data && typeof data === 'object' ? (data.config ?? data) : null;
+      if (incoming && typeof incoming === 'object') {
+        setConfig((prev: any) => ({ ...prev, ...incoming }));
+      }
     } catch (err) {
       console.error('Update config error:', err);
     }
@@ -378,8 +387,9 @@ export default function App() {
   const fetchAlerts = async () => {
     try {
       const res = await fetch(resolveUrl('/api/trading/alerts'));
+      if (!res.ok) throw new Error(`Alerts error: ${res.status}`);
       const data = await res.json();
-      setAlerts(data);
+      setAlerts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Alerts error:', err);
     }
@@ -388,8 +398,9 @@ export default function App() {
   const fetchNotifications = async () => {
     try {
       const res = await fetch(resolveUrl('/api/trading/notifications'));
+      if (!res.ok) throw new Error(`Notifications error: ${res.status}`);
       const data = await res.json();
-      setNotifications(data);
+      setNotifications(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Notifications error:', err);
     }
@@ -463,7 +474,7 @@ export default function App() {
       const res = await fetch(resolveUrl('/api/trading/signals'));
       if (!res.ok) throw new Error(`Signals error: ${res.status}`);
       const data = await res.json();
-      setSignals(data);
+      setSignals(data && typeof data === 'object' && !Array.isArray(data) ? data : null);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -475,7 +486,8 @@ export default function App() {
       const res = await fetch(resolveUrl('/api/trading/history'));
       if (!res.ok) throw new Error(`History error: ${res.status}`);
       const data = await res.json();
-      setHistory(data);
+      // The chart needs candle-like points; ignore anything without a time field.
+      setHistory(Array.isArray(data) ? data.filter((d: any) => d && d.time !== undefined) : []);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -486,8 +498,11 @@ export default function App() {
     setLoading(true);
     try {
       const res = await fetch(resolveUrl('/api/trading/backtest'));
+      if (!res.ok) throw new Error(`Backtest error: ${res.status}`);
       const data = await res.json();
       setBacktest(data);
+    } catch (err) {
+      console.error('Backtest error:', err);
     } finally {
       setLoading(false);
     }
