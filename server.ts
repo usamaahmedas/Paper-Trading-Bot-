@@ -47,42 +47,10 @@ function getBinance() {
   return binanceClient;
 }
 
-function getMockCandles(interval: string, limit: number) {
-  const candles: any[] = [];
-  let basePrice = 64500;
-  let timeStep = 3600000;
-  if (interval === '15m') timeStep = 900000;
-  if (interval === '4h') timeStep = 14400000;
-
-  const now = Date.now();
-  let currentTime = now - (limit * timeStep);
-
-  for (let i = 0; i < limit; i++) {
-    const wave = Math.sin(i / 15) * 1200 + Math.cos(i / 5) * 400 + Math.sin(i / 60) * 3500;
-    const noise = (Math.random() - 0.49) * 300;
-    const close = basePrice + wave + noise;
-    const open = i === 0 ? basePrice : parseFloat(candles[i - 1].close);
-    const high = Math.max(open, close) + Math.random() * 150;
-    const low = Math.min(open, close) - Math.random() * 150;
-    const volume = 150 + Math.random() * 600;
-
-    candles.push({
-      openTime: currentTime,
-      open: open.toFixed(2),
-      high: high.toFixed(2),
-      low: low.toFixed(2),
-      close: close.toFixed(2),
-      volume: volume.toFixed(2),
-      closeTime: currentTime + timeStep - 1,
-      trades: Math.floor(1200 + Math.random() * 4000),
-      quoteAssetVolume: (volume * close).toFixed(2),
-      buyActiveBaseAssetVolume: (volume * 0.52).toFixed(2),
-      buyActiveQuoteAssetVolume: (volume * 0.52 * close).toFixed(2)
-    });
-
-    currentTime += timeStep;
-  }
-  return candles;
+function isAdminAuthorized(password: unknown): boolean {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) return false;
+  return typeof password === 'string' && password === adminPassword;
 }
 
 async function fetchCandlesSafely(symbol: string, interval: string, limit: number) {
@@ -94,8 +62,8 @@ async function fetchCandlesSafely(symbol: string, interval: string, limit: numbe
     }
     return candles;
   } catch (err: any) {
-    console.log(`[Candles] Using mock data for ${symbol}`);
-    return getMockCandles(interval, limit);
+    console.log(`[Candles] Fetch failed for ${symbol} ${interval}`);
+    throw err;
   }
 }
 
@@ -219,8 +187,12 @@ async function closePosition(exitPrice: number, reason: string) {
     ? (exitPrice - currentPosition.entryPrice) * currentPosition.amount
     : (currentPosition.entryPrice - exitPrice) * currentPosition.amount;
 
-  const pnlAfterFees = pnl * 0.998;
-  balance += pnlAfterFees;
+  const entryFee = Number(currentPosition.entryFee) || 0;
+  const exitFee = currentPosition.amount * exitPrice * config.feePct / 100;
+  const pnlAfterFees = pnl - entryFee - exitFee;
+  // The entry fee was already deducted from balance when the position opened,
+  // so only the gross PnL and the exit fee are applied here.
+  balance += pnl - exitFee;
 
   const trade = {
     id: currentPosition.id,
@@ -228,6 +200,8 @@ async function closePosition(exitPrice: number, reason: string) {
     entryPrice: currentPosition.entryPrice,
     exitPrice: exitPrice,
     amount: currentPosition.amount,
+    entryFee,
+    exitFee,
     pnl: pnlAfterFees,
     timestamp: Date.now(),
     reason: reason
@@ -295,6 +269,14 @@ const config: Config = {
 
 const tradingConfig = config;
 
+function getEffectiveTradeSizePct(): number {
+  let pct = config.tradeSizePct;
+  if (typeof config.sizingMinPct === 'number' && typeof config.sizingMaxPct === 'number') {
+    pct = Math.min(Math.max(pct, config.sizingMinPct), config.sizingMaxPct);
+  }
+  return pct;
+}
+
 function calculateRSI(closes: number[], period: number = 14): number {
   if (closes.length < period) return 50;
   const changes = [];
@@ -347,7 +329,7 @@ function calculateATR(highs: number[], lows: number[], closes: number[], period:
 }
 
 async function calculateSignals(symbol: string = 'BTCUSDT'): Promise<any> {
-  const candles1h = await fetchCandlesSafely(symbol, '1h', 100);
+  const candles1h = await fetchCandlesSafely(symbol, '1h', 250);
   const candles4h = await fetchCandlesSafely(symbol, '4h', 50);
 
   const closes1h = candles1h.map((c: any) => parseFloat(c.close));
@@ -412,9 +394,42 @@ function registerRoutes(app: express.Application) {
     res.json(trades);
   });
 
+  app.get('/api/trading/signals', (req, res) => {
+    res.json(debugLogs.length > 0 ? debugLogs[0] : null);
+  });
+
+  app.get('/api/trading/alerts', (req, res) => {
+    const alerts = debugLogs
+      .filter(log => log.triggered === true)
+      .map(log => ({
+        id: log.id,
+        status: 'TRIGGERED',
+        direction: log.score >= 0 ? 'UP' : 'DOWN',
+        targetPrice: log.price,
+        score: log.score,
+        timestamp: log.timestamp
+      }));
+    res.json(alerts);
+  });
+
+  app.get('/api/trading/notifications', (req, res) => {
+    const notifications = debugLogs
+      .filter(log => log.triggered === true)
+      .map(log => ({
+        id: log.id,
+        message: `Entry signal triggered at \$${Number(log.price).toLocaleString()} (score ${log.score})`,
+        timestamp: log.timestamp,
+        read: false
+      }));
+    res.json(notifications);
+  });
+
   app.post('/api/trading/ledger/reset', (req, res) => {
-    const password = req.body.password;
-    if (password !== process.env.ADMIN_PASSWORD) {
+    if (!process.env.ADMIN_PASSWORD) {
+      res.status(503).json({ error: 'ADMIN_PASSWORD not configured' });
+      return;
+    }
+    if (!isAdminAuthorized(req.body?.password)) {
       res.status(403).json({ error: 'Unauthorized' });
       return;
     }
@@ -425,12 +440,55 @@ function registerRoutes(app: express.Application) {
   });
 
   app.post('/api/trading/config', (req, res) => {
-    const password = req.body.password;
-    if (password !== process.env.ADMIN_PASSWORD) {
+    if (!process.env.ADMIN_PASSWORD) {
+      res.status(503).json({ error: 'ADMIN_PASSWORD not configured' });
+      return;
+    }
+    if (!isAdminAuthorized(req.body?.password)) {
       res.status(403).json({ error: 'Unauthorized' });
       return;
     }
-    Object.assign(config, req.body.config);
+
+    const numericKeys = [
+      'stopLossPct', 'takeProfitPct', 'tradeSizePct', 'buyThreshold',
+      'shortEntryThreshold', 'sellThreshold', 'shortExitThreshold',
+      'cooldownMinutes', 'feePct'
+    ] as const;
+    const booleanKeys = ['enableShorts', 'isAutoTradingEnabled'] as const;
+
+    const input = req.body?.config;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      res.status(400).json({ error: 'Invalid config key or value' });
+      return;
+    }
+
+    const updates: Record<string, number | boolean> = {};
+    for (const key of Object.keys(input)) {
+      const value = input[key];
+      if ((numericKeys as readonly string[]).includes(key)) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+          res.status(400).json({ error: 'Invalid config key or value' });
+          return;
+        }
+        updates[key] = value;
+      } else if ((booleanKeys as readonly string[]).includes(key)) {
+        if (typeof value !== 'boolean') {
+          res.status(400).json({ error: 'Invalid config key or value' });
+          return;
+        }
+        updates[key] = value;
+      } else {
+        res.status(400).json({ error: 'Invalid config key or value' });
+        return;
+      }
+    }
+
+    for (const key of numericKeys) {
+      if (key in updates) config[key] = updates[key] as number;
+    }
+    for (const key of booleanKeys) {
+      if (key in updates) config[key] = updates[key] as boolean;
+    }
     res.json({ message: 'Config updated', config });
   });
 
@@ -497,12 +555,31 @@ async function startServer() {
       }
 
       if (tradingConfig.isAutoTradingEnabled) {
+        let closedByRiskExit = false;
+        if (currentPosition) {
+          const price = signals.price;
+          let exitReason: string | null = null;
+          if (currentPosition.type === 'LONG') {
+            if (price <= currentPosition.stopLoss) exitReason = 'STOP_LOSS';
+            else if (price >= currentPosition.takeProfit) exitReason = 'TAKE_PROFIT';
+          } else if (currentPosition.type === 'SHORT') {
+            if (price >= currentPosition.stopLoss) exitReason = 'STOP_LOSS';
+            else if (price <= currentPosition.takeProfit) exitReason = 'TAKE_PROFIT';
+          }
+          if (exitReason) {
+            await closePosition(price, exitReason);
+            closedByRiskExit = true;
+          }
+        }
+
         if (isLongTriggered) {
           const price = signals.price;
-          const tradeAmount = balance * 0.02;
+          const tradeAmount = balance * (getEffectiveTradeSizePct() / 100);
           const qty = tradeAmount / price;
           const slPrice = price * (1 - config.stopLossPct / 100);
           const tpPrice = price * (1 + config.takeProfitPct / 100);
+          const entryFee = (qty * price) * config.feePct / 100;
+          balance -= entryFee;
 
           currentPosition = {
             id: Math.random().toString(36).substring(7),
@@ -513,16 +590,20 @@ async function startServer() {
             leverageUsed: 1,
             status: 'OPEN',
             stopLoss: slPrice,
-            takeProfit: tpPrice
+            takeProfit: tpPrice,
+            entryFee
           };
+          saveLedger();
           await sendTelegram(`🤖 *Auto-Trade LONG*\nPrice: $${price.toLocaleString()}\nSL: $${slPrice.toFixed(2)}\nTP: $${tpPrice.toFixed(2)}`);
         }
         else if (isShortTriggered) {
           const price = signals.price;
-          const tradeAmount = balance * 0.02;
+          const tradeAmount = balance * (getEffectiveTradeSizePct() / 100);
           const qty = tradeAmount / price;
           const slPrice = price * (1 + config.stopLossPct / 100);
           const tpPrice = price * (1 - config.takeProfitPct / 100);
+          const entryFee = (qty * price) * config.feePct / 100;
+          balance -= entryFee;
 
           currentPosition = {
             id: Math.random().toString(36).substring(7),
@@ -533,12 +614,14 @@ async function startServer() {
             leverageUsed: 1,
             status: 'OPEN',
             stopLoss: slPrice,
-            takeProfit: tpPrice
+            takeProfit: tpPrice,
+            entryFee
           };
+          saveLedger();
           await sendTelegram(`🤖 *Auto-Trade SHORT*\nPrice: $${price.toLocaleString()}\nSL: $${slPrice.toFixed(2)}\nTP: $${tpPrice.toFixed(2)}`);
         }
 
-        if (currentPosition) {
+        if (currentPosition && !closedByRiskExit) {
           if (currentPosition.type === 'LONG' && signals.score <= config.sellThreshold) {
             await closePosition(signals.price, 'AUTO_DOWNTREND');
           } else if (currentPosition.type === 'SHORT' && signals.score >= config.shortExitThreshold) {
